@@ -4,8 +4,49 @@ import { logger } from './logger.js';
 
 // ── Card builder ──────────────────────────────────────────────────────────────
 
+/** 把终端输出包进可折叠面板（默认折叠，点开才看，避免群里刷屏） */
+function collapsibleTerminalPanel(promptText) {
+  const content = '```\n' + promptText.slice(-1_200) + '\n```';
+  return {
+    tag: 'collapsible_panel',
+    expanded: false,
+    header: {
+      title: { tag: 'plain_text', content: '📄 终端输出（点击展开）' },
+      vertical_align: 'center',
+      icon: {
+        tag: 'standard_icon',
+        token: 'down-small-ccm_outlined',
+        color: 'grey',
+        size: '16px 16px',
+      },
+      icon_position: 'right',
+      icon_expanded_angle: -180,
+    },
+    elements: [
+      { tag: 'div', text: { tag: 'lark_md', content } },
+    ],
+  };
+}
+
+function buildHeader(cwd) {
+  return [
+    {
+      tag: 'div',
+      fields: [
+        { is_short: true, text: { tag: 'lark_md', content: `**📁 目录**\n${cwd}` } },
+        { is_short: true, text: { tag: 'lark_md', content: `**🖥 主机**\n${os.hostname()}` } },
+      ],
+    },
+    { tag: 'hr' },
+  ];
+}
+
+function buildFooter(timeStr) {
+  return { tag: 'note', elements: [{ tag: 'plain_text', content: `🕐 ${timeStr}` }] };
+}
+
 /**
- * 构建 prompt 通知卡片。
+ * 构建 prompt 通知卡片（带操作按钮）。
  *
  * 按钮带 value 字段（而非 url），点击时飞书通过 WebSocket 回调 CardActionHandler，
  * 无需公网 URL，这是整个方案的核心优势。
@@ -21,33 +62,13 @@ export function buildPromptCard({ cwd, promptText, options, sessionId }) {
   const time = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 
   const elements = [
-    {
-      tag: 'div',
-      fields: [
-        {
-          is_short: true,
-          text: { tag: 'lark_md', content: `**📁 目录**\n${cwd}` },
-        },
-        {
-          is_short: true,
-          text: { tag: 'lark_md', content: `**🖥 主机**\n${os.hostname()}` },
-        },
-      ],
-    },
-    { tag: 'hr' },
-    { tag: 'div', text: { tag: 'lark_md', content: '**终端输出：**' } },
-    {
-      tag: 'div',
-      text: {
-        tag: 'lark_md',
-        content: '```\n' + promptText.slice(-1_200) + '\n```',
-      },
-    },
-    { tag: 'hr' },
+    ...buildHeader(cwd),
+    collapsibleTerminalPanel(promptText),
   ];
 
   // 生成操作按钮（仅当解析到选项时才渲染）
   if (options.length > 0) {
+    elements.push({ tag: 'hr' });
     const actions = options.slice(0, 4).map((opt, i) => {
       const isLast = i === options.length - 1 && i > 0;
       const action =
@@ -65,10 +86,7 @@ export function buildPromptCard({ cwd, promptText, options, sessionId }) {
     });
     elements.push({ tag: 'action', actions });
   }
-  elements.push({
-    tag: 'note',
-    elements: [{ tag: 'plain_text', content: `🕐 ${time}` }],
-  });
+  elements.push(buildFooter(time));
 
   return {
     config: { wide_screen_mode: true },
@@ -77,6 +95,31 @@ export function buildPromptCard({ cwd, promptText, options, sessionId }) {
       template: 'orange',
     },
     elements,
+  };
+}
+
+/**
+ * 构建"已操作"的卡片（去掉按钮，显示已选择项）。
+ * 用于 updateCard 替换原通知卡片。
+ *
+ * @param {{ cwd: string, promptText: string, chosenLabel: string }} param
+ */
+export function buildDonePromptCard({ cwd, promptText, chosenLabel }) {
+  const time = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+
+  return {
+    config: { wide_screen_mode: true },
+    header: {
+      title: { tag: 'plain_text', content: '✅ Claude Code 已处理' },
+      template: 'green',
+    },
+    elements: [
+      ...buildHeader(cwd),
+      collapsibleTerminalPanel(promptText),
+      { tag: 'hr' },
+      { tag: 'div', text: { tag: 'lark_md', content: `**已选择：** ${chosenLabel}` } },
+      buildFooter(time),
+    ],
   };
 }
 
@@ -115,7 +158,7 @@ export class FeishuClient {
     this.#ws = new lark.WSClient({
       appId,
       appSecret,
-      loggerLevel: lark.LoggerLevel.info,
+      loggerLevel: lark.LoggerLevel.debug,
       logger: sdkLogger,
     });
     this._encryptKey = encryptKey;

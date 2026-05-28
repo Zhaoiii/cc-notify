@@ -22,9 +22,17 @@ import { spawn } from "child_process";
 import crypto from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
-import { ClaudeRuntime } from "./claude-runtime.js";
-import { logger, LOG_FILE } from "./logger.js";
-import { connectBroker, isBrokerRunning, onMessages, send, BROKER_SOCK } from "./ipc.js";
+
+// --debug 必须在 logger 加载前处理，否则 logger 模块读不到环境变量
+const debugIdx = process.argv.indexOf("--debug");
+if (debugIdx !== -1) {
+  process.env.CC_NOTIFY_DEBUG = "1";
+  process.argv.splice(debugIdx, 1);
+}
+
+const { ClaudeRuntime } = await import("./claude-runtime.js");
+const { logger, LOG_FILE } = await import("./logger.js");
+const { connectBroker, isBrokerRunning, onMessages, send, BROKER_SOCK } = await import("./ipc.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -373,6 +381,7 @@ if (subcommand === "install") {
 
 用法：
   claude-n              启动 Claude Code（带飞书通知）
+  claude-n --debug      启动并把日志写入 cc-notify.log（默认不写）
   claude-n install      把 hook 写入 ~/.claude/settings.json
   claude-n uninstall    从 ~/.claude/settings.json 移除 hook
   claude-n --help       显示本帮助

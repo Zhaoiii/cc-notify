@@ -96,35 +96,22 @@ export class ClaudeRuntime extends EventEmitter {
 
   /**
    * 选择一个选项，自动发送正确的按键序列。
+   *
+   * Claude Code 权限对话框直接接受数字键（"1" / "2" / "3"）作为选择，
+   * 也接受字符键（"y" / "n"）。直接发字符比方向键 dance 稳得多，
+   * 不受 TUI 渲染时序影响。
+   *
    * @param {string} choiceValue  如 '1', '2', 'y', 'n'
    */
-  async select(choiceValue) {
+  select(choiceValue) {
     const opt = this.#currentOptions.find((o) => o.value === choiceValue);
-
-    // 计算按键序列：每个元素是一次"按键"，按键之间会插入延迟
-    let keys;
-    if (!opt) {
-      keys = [...choiceValue, "\r"];
-    } else if (opt.arrowsDown === null) {
-      keys = [...opt.value, "\r"];
-    } else {
-      const DOWN = "\x1b[B";
-      const UP = "\x1b[A";
-      const n = opt.arrowsDown;
-      const arrow = n >= 0 ? DOWN : UP;
-      keys = Array.from({ length: Math.abs(n) }, () => arrow).concat("\r");
-    }
+    const keys = (opt ? opt.value : choiceValue) + "\r";
 
     logger.info(
-      `[runtime] select(${choiceValue}) opt=${JSON.stringify(opt)} currentOptions=${JSON.stringify(this.#currentOptions)} → ${keys.map(escapeForLog).join(" ")}`,
+      `[runtime] select(${choiceValue}) opt=${JSON.stringify(opt)} currentOptions=${JSON.stringify(this.#currentOptions)} → ${escapeForLog(keys)}`,
     );
+    this.write(keys);
     this.#currentOptions = [];
-
-    // 按键之间留 40ms，让 TUI 有时间消费上一个按键并重绘
-    for (let i = 0; i < keys.length; i++) {
-      if (i > 0) await new Promise((r) => setTimeout(r, 40));
-      this.write(keys[i]);
-    }
   }
 
   /** 强制终止 Claude 进程 */

@@ -19,7 +19,7 @@ import net from 'net';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { FeishuClient, buildPromptCard } from './feishu.js';
+import { FeishuClient, buildPromptCard, buildDonePromptCard } from './feishu.js';
 import { logger, LOG_FILE } from './logger.js';
 import { BROKER_SOCK, BROKER_PORT, send, onMessages } from './ipc.js';
 
@@ -116,7 +116,11 @@ async function handleHookEvent(sessionId, event) {
       options,
     });
     const messageId = await feishu.sendCard({ chatId: FEISHU_NOTIFY_CHAT_ID, card });
-    if (messageId) session.lastNotifyMessageId = messageId;
+    if (messageId) {
+      session.lastNotifyMessageId = messageId;
+      // 保存上下文供 onCardAction 在 updateCard 时复用
+      session.lastNotifyContext = { cwd: session.cwd, promptText, options };
+    }
   } else if (event.hook_event_name === 'Stop') {
     await feishu.sendText({
       chatId: FEISHU_NOTIFY_CHAT_ID,
@@ -200,6 +204,11 @@ feishu.start({
     } else if (action === 'stop') {
       send(session.socket, { type: 'stop' });
     }
+
+    // 注意：暂时只回 toast，不返回 card 更新。
+    // 之前用 {card: {type:'raw', data:...}} 包装是 v2 卡片格式，但我们发的是 v1 卡片，
+    // 飞书会判响应非法，客户端 timeout → 触发 rate limit"操作频繁"。
+    // 等卡片格式问题排清楚再加 card 更新。
     return { toast: { type: 'success', content: '✅ 已操作' } };
   },
 });
@@ -257,12 +266,6 @@ const unixServer = net.createServer((socket) => {
       sessions.set(sessionId, { socket, cwd, pid, lastActiveAt: Date.now() });
       send(socket, { type: 'registered' });
       logger.info(`[broker] 注册: [${sessionId}] ${shortCwd(cwd)} (pid ${pid}), 共 ${sessions.size} 个会话`);
-
-      // 广播新会话到飞书
-      await feishu.sendText({
-        chatId: FEISHU_NOTIFY_CHAT_ID,
-        text: `🟢 [${sessionId}] ${shortCwd(cwd)} 已接入 (共 ${sessions.size} 个会话)`,
-      });
 
     } else if (msg.type === 'unregister') {
       const { sessionId } = msg;
