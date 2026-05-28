@@ -195,20 +195,30 @@ feishu.start({
     const session = sessions.get(sid);
     if (!session) return { toast: { type: 'info', content: '会话已结束' } };
 
+    let chosenLabel;
     if (action === 'select' && choice) {
       send(session.socket, { type: 'select', choice });
+      const ctx = session.lastNotifyContext;
+      chosenLabel = ctx?.options?.find((o) => o.value === choice)?.label ?? choice;
     } else if (action === 'approve') {
       send(session.socket, { type: 'select', choice: 'y' });
+      chosenLabel = '允许';
     } else if (action === 'deny') {
       send(session.socket, { type: 'select', choice: 'n' });
+      chosenLabel = '拒绝';
     } else if (action === 'stop') {
       send(session.socket, { type: 'stop' });
+      chosenLabel = '停止';
     }
 
-    // 注意：暂时只回 toast，不返回 card 更新。
-    // 之前用 {card: {type:'raw', data:...}} 包装是 v2 卡片格式，但我们发的是 v1 卡片，
-    // 飞书会判响应非法，客户端 timeout → 触发 rate limit"操作频繁"。
-    // 等卡片格式问题排清楚再加 card 更新。
+    // 用 updateCard (im.message.patch) 异步更新卡片，去掉按钮、展示已选择项
+    if (chosenLabel && session.lastNotifyMessageId && session.lastNotifyContext) {
+      const { cwd, promptText } = session.lastNotifyContext;
+      const doneCard = buildDonePromptCard({ cwd, promptText, chosenLabel });
+      feishu.updateCard({ messageId: session.lastNotifyMessageId, card: doneCard })
+        .catch((err) => logger.error('[broker] updateCard 失败:', err.message));
+    }
+
     return { toast: { type: 'success', content: '✅ 已操作' } };
   },
 });
