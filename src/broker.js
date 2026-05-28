@@ -79,10 +79,8 @@ function getMostRecent() {
 
 function checkEmpty() {
   if (sessions.size === 0) {
-    logger.info('[broker] 注册表已空，5s 后自动退出');
-    setTimeout(() => {
-      shutdown();
-    }, 5_000).unref();
+    logger.info('[broker] 注册表已空，立即退出');
+    shutdown();
   }
 }
 
@@ -109,6 +107,8 @@ async function handleHookEvent(sessionId, event) {
     // 通知卡片由 claude-n 实例已经解析好 options 和 promptText，通过 hook_event 转发过来
     const { options = [], promptText = '' } = event;
 
+    logger.info(`[TRACE][broker] handleHookEvent Notification: sessionId=${sessionId} options=${options.length} promptText_len=${promptText.length}`);
+
     const card = buildPromptCard({
       cwd: session.cwd,
       sessionId,
@@ -116,12 +116,14 @@ async function handleHookEvent(sessionId, event) {
       options,
     });
     const messageId = await feishu.sendCard({ chatId: FEISHU_NOTIFY_CHAT_ID, card });
+    logger.info(`[TRACE][broker] sendCard result: messageId=${messageId ?? '(null — 发送失败)'}`);
     if (messageId) {
       session.lastNotifyMessageId = messageId;
       // 保存上下文供 onCardAction 在 updateCard 时复用
       session.lastNotifyContext = { cwd: session.cwd, promptText, options };
     }
   } else if (event.hook_event_name === 'Stop') {
+    logger.info(`[TRACE][broker] handleHookEvent Stop: sessionId=${sessionId}`);
     await feishu.sendText({
       chatId: FEISHU_NOTIFY_CHAT_ID,
       text: `🏁 [${sessionId}] ${shortCwd(session.cwd)} — Claude 会话已结束`,
@@ -237,18 +239,32 @@ const httpServer = http.createServer((req, res) => {
     let event;
     try { event = JSON.parse(body); } catch { return; }
 
+    logger.info(`[TRACE][broker] HTTP /hook received: event=${event.hook_event_name} sessionId_in_event=${event.sessionId ?? '(none)'}`);
+
+    const fallback = !event.sessionId;
     const sessionId = event.sessionId ?? getMostRecent()?.id;
-    if (!sessionId) return;
+    if (!sessionId) {
+      logger.info('[TRACE][broker] HTTP /hook: sessionId 解析失败（event 无 sessionId 且无活跃 session），丢弃');
+      return;
+    }
+    if (fallback) {
+      logger.info(`[TRACE][broker] HTTP /hook: sessionId fallback to getMostRecent() → ${sessionId}`);
+    }
 
     try {
       if (event.hook_event_name === 'Notification') {
         // Notification 需要 PTY 解析的 options/promptText，转发给 claude-n 处理
         const session = sessions.get(sessionId);
-        if (!session) { logger.error(`[broker] hook 事件找不到 session: ${sessionId}`); return; }
+        if (!session) {
+          logger.error(`[TRACE][broker] hook 事件找不到 session: ${sessionId}，现有 sessions: [${[...sessions.keys()].join(',')}]`);
+          return;
+        }
         session.lastActiveAt = Date.now();
+        logger.info(`[TRACE][broker] Notification → hook_fwd 发给 [${sessionId}]`);
         send(session.socket, { type: 'hook_fwd', event });
       } else {
         // Stop 等事件直接处理
+        logger.info(`[TRACE][broker] ${event.hook_event_name} → handleHookEvent [${sessionId}]`);
         await handleHookEvent(sessionId, event);
       }
     } catch (err) {
@@ -285,12 +301,15 @@ const unixServer = net.createServer((socket) => {
       checkEmpty();
     } else if (msg.type === 'hook_result') {
       // claude-n 解析 PTY buffer 后回传的富化事件
+      logger.info(`[TRACE][broker] hook_result 收到: registeredId=${registeredId ?? '(none)'} options=${msg.event?.options?.length ?? 0} promptText_len=${msg.event?.promptText?.length ?? 0}`);
       if (registeredId) {
         const s = sessions.get(registeredId);
         if (s) s.lastActiveAt = Date.now();
         await handleHookEvent(registeredId, msg.event).catch(err =>
           logger.error('[broker] hook_result 处理失败:', err.message)
         );
+      } else {
+        logger.error('[TRACE][broker] hook_result 丢弃：registeredId 为空');
       }
     }
   });

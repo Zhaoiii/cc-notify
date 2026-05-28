@@ -32,15 +32,16 @@ if (debugIdx !== -1) {
 
 const { ClaudeRuntime } = await import("./claude-runtime.js");
 const { logger, LOG_FILE } = await import("./logger.js");
-const { connectBroker, isBrokerRunning, onMessages, send, BROKER_SOCK } = await import("./ipc.js");
+const { connectBroker, isBrokerRunning, onMessages, send, BROKER_SOCK } =
+  await import("./ipc.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── .env 加载 ─────────────────────────────────────────────────────────────────
 
 const userEnv = path.join(homedir(), ".config", "cc-notify", ".env");
-const cwdEnv  = path.join(process.cwd(), ".env");
-if (existsSync(userEnv))     loadDotenv({ path: userEnv });
+const cwdEnv = path.join(process.cwd(), ".env");
+if (existsSync(userEnv)) loadDotenv({ path: userEnv });
 else if (existsSync(cwdEnv)) loadDotenv({ path: cwdEnv });
 
 // ── 环境变量校验 ──────────────────────────────────────────────────────────────
@@ -48,7 +49,9 @@ else if (existsSync(cwdEnv)) loadDotenv({ path: cwdEnv });
 const { FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_NOTIFY_CHAT_ID } = process.env;
 
 if (!FEISHU_APP_ID || !FEISHU_APP_SECRET) {
-  console.error("[claude-n] 缺少 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请检查 .env");
+  console.error(
+    "[claude-n] 缺少 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请检查 .env",
+  );
   process.exit(1);
 }
 if (!FEISHU_NOTIFY_CHAT_ID) {
@@ -70,14 +73,17 @@ const CC_NOTIFY_HOOK = { type: "command", command: HOOK_CMD };
 function isCcNotifyHook(h) {
   const cmd = h?.command ?? "";
   if (cmd === HOOK_CMD) return true;
-  if (/(^|\s|\/)cc-notify(\/|\s)/.test(cmd)) return true;     // 旧版绝对路径
+  if (/(^|\s|\/)cc-notify(\/|\s)/.test(cmd)) return true; // 旧版绝对路径
   if (/(^|\s|\/)hook\.js(\s|$)/.test(cmd) && /cc-notify/.test(cmd)) return true;
   return false;
 }
 
 function readSettings() {
-  try { return JSON.parse(readFileSync(SETTINGS_PATH, "utf8")); }
-  catch { return {}; }
+  try {
+    return JSON.parse(readFileSync(SETTINGS_PATH, "utf8"));
+  } catch {
+    return {};
+  }
 }
 
 function writeSettings(settings) {
@@ -94,10 +100,14 @@ function installHooks() {
   for (const event of Object.keys(hooks)) {
     const before = JSON.stringify(hooks[event]);
     hooks[event] = (hooks[event] ?? [])
-      .map(g => ({ ...g, hooks: (g.hooks ?? []).filter(h => !isCcNotifyHook(h)) }))
-      .filter(g => g.hooks.length > 0);
+      .map((g) => ({
+        ...g,
+        hooks: (g.hooks ?? []).filter((h) => !isCcNotifyHook(h)),
+      }))
+      .filter((g) => g.hooks.length > 0);
     if (hooks[event].length === 0) delete hooks[event];
-    if (JSON.stringify(hooks[event] ?? []) !== before) changes.push(`清理旧版 ${event}`);
+    if (JSON.stringify(hooks[event] ?? []) !== before)
+      changes.push(`清理旧版 ${event}`);
   }
 
   // 注入 Notification 和 Stop
@@ -123,17 +133,27 @@ function uninstallHooks() {
   let removed = 0;
 
   for (const event of Object.keys(hooks)) {
-    const beforeCount = (hooks[event] ?? []).reduce((n, g) => n + (g.hooks ?? []).length, 0);
+    const beforeCount = (hooks[event] ?? []).reduce(
+      (n, g) => n + (g.hooks ?? []).length,
+      0,
+    );
     hooks[event] = (hooks[event] ?? [])
-      .map(g => ({ ...g, hooks: (g.hooks ?? []).filter(h => !isCcNotifyHook(h)) }))
-      .filter(g => g.hooks.length > 0);
-    const afterCount = (hooks[event] ?? []).reduce((n, g) => n + (g.hooks ?? []).length, 0);
+      .map((g) => ({
+        ...g,
+        hooks: (g.hooks ?? []).filter((h) => !isCcNotifyHook(h)),
+      }))
+      .filter((g) => g.hooks.length > 0);
+    const afterCount = (hooks[event] ?? []).reduce(
+      (n, g) => n + (g.hooks ?? []).length,
+      0,
+    );
     removed += beforeCount - afterCount;
     if (hooks[event].length === 0) delete hooks[event];
   }
 
   writeSettings({ ...settings, hooks });
-  if (removed > 0) console.log(`✅ 已从 ${SETTINGS_PATH} 移除 ${removed} 个 cc-notify hook`);
+  if (removed > 0)
+    console.log(`✅ 已从 ${SETTINGS_PATH} 移除 ${removed} 个 cc-notify hook`);
   else console.log(`ℹ️  没有找到 cc-notify hook，无需清理`);
 }
 
@@ -141,7 +161,7 @@ function uninstallHooks() {
 function isHookInstalled() {
   const settings = readSettings();
   const notif = settings.hooks?.Notification ?? [];
-  return notif.some(g => (g.hooks ?? []).some(h => h.command === HOOK_CMD));
+  return notif.some((g) => (g.hooks ?? []).some((h) => h.command === HOOK_CMD));
 }
 
 // ── Broker 启动 & 注册 ────────────────────────────────────────────────────────
@@ -158,7 +178,7 @@ async function startBroker() {
 
   // 等 broker 起来（最多 5 秒）
   for (let i = 0; i < 25; i++) {
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 200));
     if (await isBrokerRunning()) return;
   }
   throw new Error("broker 启动超时");
@@ -186,18 +206,30 @@ async function registerToBroker() {
         // 固定 150ms 经常不够（Ink 重渲染受 CPU 抖动影响），改成轮询：
         // 每 80ms 检查一次，解析到 options 立即发；最多等 1s 后兜底发空 options 卡片。
         (async () => {
-          const DEADLINE = Date.now() + 1_000;
+          const startTs = Date.now();
+          const DEADLINE = startTs + 1_000;
           let options = [];
-          let promptText = '';
+          let promptText = "";
+          let pollCount = 0;
+          logger.info(`[TRACE][claude-n:${SESSION_ID}] hook_fwd 收到: event=${msg.event?.hook_event_name}, 开始 PTY 轮询`);
           while (Date.now() < DEADLINE) {
-            await new Promise(r => setTimeout(r, 80));
-            const buf = runtime.getRecentLogs(200);
+            await new Promise((r) => setTimeout(r, 80));
+            pollCount++;
+            const buf = runtime.getRecentLogs(30);
             options = extractOptions(buf);
             promptText = extractPromptContent(stripAnsi(buf));
-            if (options.length > 0) break;
+            if (options.length > 0) {
+              logger.info(`[TRACE][claude-n:${SESSION_ID}] PTY 轮询第 ${pollCount} 次命中 options(${options.length})，耗时 ${Date.now() - startTs}ms`);
+              break;
+            }
+          }
+          if (options.length === 0) {
+            logger.info(`[TRACE][claude-n:${SESSION_ID}] PTY 轮询超时(1s, ${pollCount}次)，未找到 options，发兜底空卡片`);
           }
           if (options.length > 0) runtime.setOptions(options);
-          logger.info(`[claude-n:${SESSION_ID}] hook options(${Date.now() - (DEADLINE - 1_000)}ms): ${JSON.stringify(options.map(o => o.value + "=" + o.label))}`);
+          logger.info(
+            `[TRACE][claude-n:${SESSION_ID}] hook_result 发送: options=${JSON.stringify(options.map((o) => o.value + "=" + o.label))} promptText_len=${promptText.length}`,
+          );
           send(socket, {
             type: "hook_result",
             event: { ...msg.event, options, promptText },
@@ -206,7 +238,12 @@ async function registerToBroker() {
       }
     });
 
-    send(socket, { type: "register", sessionId: SESSION_ID, cwd: process.cwd(), pid: process.pid });
+    send(socket, {
+      type: "register",
+      sessionId: SESSION_ID,
+      cwd: process.cwd(),
+      pid: process.pid,
+    });
   });
 
   socket.on("close", () => {
@@ -221,25 +258,51 @@ async function registerToBroker() {
 const BOX_CHARS_RE = /[│╭╰╮╯─╴╸╺╌╍╎╏═║╔╗╚╝╠╣╦╩╬┄┆┇┈┉┊┋┌┐└┘├┤┬┴┼]/g;
 
 function stripAnsi(str) {
-  let col = 1, out = '', i = 0;
+  let col = 1,
+    out = "",
+    i = 0;
   while (i < str.length) {
-    if (str[i] === '\x1b') {
+    if (str[i] === "\x1b") {
       const next = str[i + 1];
-      if (next === ']') {
+      if (next === "]") {
         let j = i + 2;
-        while (j < str.length && str[j] !== '\x07' && !(str[j] === '\x1b' && str[j + 1] === '\\')) j++;
-        i = str[j] === '\x07' ? j + 1 : j + 2;
-      } else if (next === '[') {
+        while (
+          j < str.length &&
+          str[j] !== "\x07" &&
+          !(str[j] === "\x1b" && str[j + 1] === "\\")
+        )
+          j++;
+        i = str[j] === "\x07" ? j + 1 : j + 2;
+      } else if (next === "[") {
         let j = i + 2;
         while (j < str.length && !/[A-Za-z~]/.test(str[j])) j++;
-        const param = str.slice(i + 2, j), cmd = str[j] ?? '';
-        if (cmd === 'C') { const n = parseInt(param) || 1; out += ' '.repeat(n); col += n; }
-        else if (cmd === 'G') { const n = parseInt(param) || 1; if (n > col) out += ' '.repeat(n - col); col = n; }
-        else if ('ABHf'.includes(cmd)) { out += '\n'; col = 1; }
+        const param = str.slice(i + 2, j),
+          cmd = str[j] ?? "";
+        if (cmd === "C") {
+          const n = parseInt(param) || 1;
+          out += " ".repeat(n);
+          col += n;
+        } else if (cmd === "G") {
+          const n = parseInt(param) || 1;
+          if (n > col) out += " ".repeat(n - col);
+          col = n;
+        } else if ("ABHf".includes(cmd)) {
+          out += "\n";
+          col = 1;
+        }
         i = j + 1;
-      } else { i += 2; }
-    } else if (str[i] === '\r') { out += '\n'; col = 1; i++; }
-    else { out += str[i]; col++; i++; }
+      } else {
+        i += 2;
+      }
+    } else if (str[i] === "\r") {
+      out += "\n";
+      col = 1;
+      i++;
+    } else {
+      out += str[i];
+      col++;
+      i++;
+    }
   }
   return out;
 }
@@ -250,59 +313,85 @@ function isNoiseLine(t) {
 }
 
 function extractPromptContent(strippedText) {
-  const lines = strippedText.split('\n');
+  const lines = strippedText.split("\n");
   let cutIdx = lines.length;
   for (let i = 0; i < lines.length; i++) {
-    const t = lines[i].replace(BOX_CHARS_RE, '').trim();
-    const wc = t.replace(/^❯\s*/, '');
-    if (/^\d+[.)]\s*\S/.test(wc) || /^Esc\s*to\s*cancel/i.test(t)) { cutIdx = i; break; }
+    const t = lines[i].replace(BOX_CHARS_RE, "").trim();
+    const wc = t.replace(/^❯\s*/, "");
+    if (/^\d+[.)]\s*\S/.test(wc) || /^Esc\s*to\s*cancel/i.test(t)) {
+      cutIdx = i;
+      break;
+    }
   }
-  const cleaned = []; let blankRun = 0;
+  const cleaned = [];
+  let blankRun = 0;
   for (const raw of lines.slice(0, cutIdx)) {
-    const line = raw.replace(BOX_CHARS_RE, '').trimEnd();
+    const line = raw.replace(BOX_CHARS_RE, "").trimEnd();
     const t = line.trim();
     if (/^[\s\d✶✽✸✺✳⏺•◆◇○●✓✗⚡🔄]*(thinking)?[\s\d]*$/.test(t) && t) continue;
     if (/\bthinking\b/.test(t)) continue;
     if (/\btokens?\b/i.test(t)) continue;
     if (/esc\s+to\s+interrupt/i.test(t)) continue;
     if (/seasoning\.\.\./i.test(t)) continue;
-    if (/^[-=]{4,}$/.test(t) || t.startsWith('\x1b') || isNoiseLine(t)) continue;
-    if (!t) { if (++blankRun <= 1) cleaned.push(''); }
-    else { blankRun = 0; cleaned.push(line); }
+    if (/^[-=]{4,}$/.test(t) || t.startsWith("\x1b") || isNoiseLine(t))
+      continue;
+    if (!t) {
+      if (++blankRun <= 1) cleaned.push("");
+    } else {
+      blankRun = 0;
+      cleaned.push(line);
+    }
   }
-  return cleaned.join('\n').trim();
+  return cleaned.join("\n").trim();
 }
 
 function extractOptions(text) {
   const clean = stripAnsi(text);
-  const lines = clean.split('\n');
-  const options = []; let cursorIndex = 0;
+  const lines = clean.split("\n");
+  const options = [];
+  let cursorIndex = 0;
   for (const line of lines) {
-    const s = line.replace(BOX_CHARS_RE, '').trim();
-    const hasCursor = s.includes('❯');
-    const wc = s.replace(/❯\s*/g, '');
+    const s = line.replace(BOX_CHARS_RE, "").trim();
+    const hasCursor = s.includes("❯");
+    const wc = s.replace(/❯\s*/g, "");
     const m = wc.match(/^(\d+)[.)]\s*(.+)$/);
     if (m) {
       if (hasCursor) cursorIndex = options.length;
-      options.push({ value: m[1], label: m[2].replace(BOX_CHARS_RE, '').trim().slice(0, 60) });
+      options.push({
+        value: m[1],
+        label: m[2].replace(BOX_CHARS_RE, "").trim().slice(0, 60),
+      });
     }
   }
-  if (options.length > 0) return options.map((o, i) => ({ ...o, arrowsDown: i - cursorIndex }));
+  if (options.length > 0)
+    return options.map((o, i) => ({ ...o, arrowsDown: i - cursorIndex }));
   if (/\[y[/\/]n\]/i.test(clean) || /\(y[/\/]n\)/i.test(clean))
-    return [{ value: 'y', label: 'Yes', arrowsDown: null }, { value: 'n', label: 'No', arrowsDown: null }];
+    return [
+      { value: "y", label: "Yes", arrowsDown: null },
+      { value: "n", label: "No", arrowsDown: null },
+    ];
   if (/\ballow\b/i.test(clean) && /\bdeny\b/i.test(clean))
-    return [{ value: 'y', label: 'Allow', arrowsDown: null }, { value: 'n', label: 'Deny', arrowsDown: null }];
+    return [
+      { value: "y", label: "Allow", arrowsDown: null },
+      { value: "n", label: "Deny", arrowsDown: null },
+    ];
   // 非数字列表式选择：检测 ❯ Yes / No 模式（Claude Code 某些 prompt 的格式）
   // 至少有一行含 ❯（光标标记），否则不视为选择菜单
   const CHOICE_RE = /^(Yes|No|Allow|Deny|Cancel|Always|Never)\b/i;
   const menuLines = lines
-    .map(l => ({ raw: l, trimmed: l.replace(BOX_CHARS_RE, '').trim() }))
-    .filter(({ trimmed }) => trimmed.includes('❯') || CHOICE_RE.test(trimmed.replace(/❯\s*/g, '')));
-  if (menuLines.length >= 2 && menuLines.some(({ trimmed }) => trimmed.includes('❯'))) {
+    .map((l) => ({ raw: l, trimmed: l.replace(BOX_CHARS_RE, "").trim() }))
+    .filter(
+      ({ trimmed }) =>
+        trimmed.includes("❯") || CHOICE_RE.test(trimmed.replace(/❯\s*/g, "")),
+    );
+  if (
+    menuLines.length >= 2 &&
+    menuLines.some(({ trimmed }) => trimmed.includes("❯"))
+  ) {
     let ci = 0;
     const opts = menuLines.map(({ trimmed }, i) => {
-      const hasCur = trimmed.includes('❯');
-      const label = trimmed.replace(/❯\s*/g, '').trim().slice(0, 60);
+      const hasCur = trimmed.includes("❯");
+      const label = trimmed.replace(/❯\s*/g, "").trim().slice(0, 60);
       if (hasCur) ci = i;
       return { value: String(i + 1), label };
     });
@@ -349,8 +438,14 @@ async function main() {
     process.exit(code ?? 0);
   });
 
-  process.on("SIGINT",  async () => { await unregister(); process.exit(0); });
-  process.on("SIGTERM", async () => { await unregister(); process.exit(0); });
+  process.on("SIGINT", async () => {
+    await unregister();
+    process.exit(0);
+  });
+  process.on("SIGTERM", async () => {
+    await unregister();
+    process.exit(0);
+  });
 
   runtime.start(process.argv.slice(2), process.cwd());
   logger.info(`[claude-n:${SESSION_ID}] Claude 已启动 | cwd: ${process.cwd()}`);
@@ -361,7 +456,7 @@ async function unregister() {
   if (!brokerSocket || brokerSocket.destroyed) return;
   send(brokerSocket, { type: "unregister", sessionId: SESSION_ID });
   // 给 broker 一点时间处理注销
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 300));
   brokerSocket.destroy();
   brokerSocket = null;
 }
@@ -393,7 +488,7 @@ if (subcommand === "install") {
 `);
   process.exit(0);
 } else {
-  main().catch(err => {
+  main().catch((err) => {
     console.error("[claude-n] 启动失败:", err.message);
     process.exit(1);
   });

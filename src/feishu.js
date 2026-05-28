@@ -236,6 +236,7 @@ export class FeishuClient {
    * @returns {Promise<string|null>} 发送成功后的 message_id
    */
   async sendCard({ chatId, card }) {
+    logger.info(`[TRACE][feishu] sendCard 调用: chatId=${chatId}`);
     try {
       const res = await this.#api.im.message.create({
         params: { receive_id_type: 'chat_id' },
@@ -245,9 +246,11 @@ export class FeishuClient {
           content: JSON.stringify(card),
         },
       });
-      return res.data?.message_id ?? null;
+      const messageId = res.data?.message_id ?? null;
+      logger.info(`[TRACE][feishu] sendCard 成功: messageId=${messageId}`);
+      return messageId;
     } catch (err) {
-      logger.error('[feishu] sendCard 失败:', err.message);
+      logger.error('[TRACE][feishu] sendCard 失败:', err.message, 'code:', err.code);
       return null;
     }
   }
