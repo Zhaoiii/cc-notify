@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Local env (contains secrets)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+cc-notify.log
+logs/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local claude settings (per-user)
+.claude

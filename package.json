@@ -1,0 +1,29 @@
+{
+  "name": "cc-notify",
+  "version": "3.0.0",
+  "description": "Claude Code wrapper — Feishu WebSocket long-connection remote control",
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "claude-n": "./src/index.js",
+    "claude-n-hook": "./src/hook.js",
+    "claude-n-broker": "./src/broker.js"
+  },
+  "preferGlobal": true,
+  "files": [
+    "src/"
+  ],
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.26.0",
+    "dotenv": "^16.4.5",
+    "node-pty": "^1.2.0-beta.13",
+    "strip-ansi": "^7.1.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
