@@ -1,5 +1,85 @@
 # cc-notify
 
+Claude Code 暂停等待你确认时，你在哪里？如果不在电脑前，任务就会一直卡着。
+
+这里介绍三种递进方案，从零配置到完整远程控制，按需选择。
+
+---
+
+## 方案一：本地系统通知
+
+最简单的方式——用 Claude Code 内置的 hook 机制触发系统弹窗，不需要任何外部服务。
+
+在 `~/.claude/settings.json` 的 `hooks` 中加入：
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Claude Code 等待确认\" with title \"Claude Code\" sound name \"Glass\"'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**优点**：零配置，立刻可用。  
+**局限**：只有人坐在电脑旁才有意义，离开桌面就收不到。
+
+---
+
+## 方案二：飞书 Webhook 单向推送
+
+飞书群机器人支持 Webhook——一条 `curl` 命令就能把通知推到手机上。
+
+**1. 创建群机器人**
+
+在飞书群设置 → 机器人 → 添加机器人 → 自定义机器人，复制生成的 Webhook URL。
+
+**2. 写一个推送脚本**
+
+```bash
+#!/bin/bash
+# ~/.local/bin/notify-feishu.sh
+curl -s -X POST "$FEISHU_WEBHOOK_URL" \
+  -H 'Content-Type: application/json' \
+  -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"Claude Code 等待确认：$*\"}}"
+```
+
+**3. 接入 hook**
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/bin/notify-feishu.sh \"$(pwd)\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+**优点**：配置极简，手机秒收通知。  
+**局限**：单向推送，看到消息后仍需回到电脑操作，无法远程审批。
+
+---
+
+## 方案三：cc-notify（双向远程控制）
+
 Claude Code 的 PTY wrapper，通过**飞书 WebSocket 长连接**实现远程监控与控制——无需公网 URL。
 
 当 Claude Code 暂停等待你确认时，cc-notify 会向飞书群/私聊推送一张交互卡片，你可以直接点击按钮（或发文字指令）远程审批、拒绝或停止任务。

@@ -207,11 +207,13 @@ async function registerToBroker() {
         // 每 80ms 检查一次，解析到 options 立即发；最多等 1s 后兜底发空 options 卡片。
         (async () => {
           const startTs = Date.now();
-          const DEADLINE = startTs + 1_000;
+          const DEADLINE = startTs + 3_000;
           let options = [];
           let promptText = "";
           let pollCount = 0;
-          logger.info(`[TRACE][claude-n:${SESSION_ID}] hook_fwd 收到: event=${msg.event?.hook_event_name}, 开始 PTY 轮询`);
+          logger.info(
+            `[TRACE][claude-n:${SESSION_ID}] hook_fwd 收到: event=${msg.event?.hook_event_name}, 开始 PTY 轮询`,
+          );
           while (Date.now() < DEADLINE) {
             await new Promise((r) => setTimeout(r, 80));
             pollCount++;
@@ -219,12 +221,18 @@ async function registerToBroker() {
             options = extractOptions(buf);
             promptText = extractPromptContent(stripAnsi(buf));
             if (options.length > 0) {
-              logger.info(`[TRACE][claude-n:${SESSION_ID}] PTY 轮询第 ${pollCount} 次命中 options(${options.length})，耗时 ${Date.now() - startTs}ms`);
+              logger.info(
+                `[TRACE][claude-n:${SESSION_ID}] PTY 轮询第 ${pollCount} 次命中 options(${options.length})，耗时 ${Date.now() - startTs}ms`,
+              );
               break;
             }
           }
           if (options.length === 0) {
-            logger.info(`[TRACE][claude-n:${SESSION_ID}] PTY 轮询超时(1s, ${pollCount}次)，未找到 options，发兜底空卡片`);
+            const rawBuf = runtime.getRecentLogs(60);
+            logger.info(
+              `[TRACE][claude-n:${SESSION_ID}] PTY 轮询超时(3s, ${pollCount}次)，未找到 options，发兜底空卡片\n` +
+              `--- stripped buffer (last 60 lines) ---\n${stripAnsi(rawBuf)}\n--- end buffer ---`,
+            );
           }
           if (options.length > 0) runtime.setOptions(options);
           logger.info(

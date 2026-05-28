@@ -125,6 +125,10 @@ export class ClaudeRuntime extends EventEmitter {
    * @param {number} [lines=30]
    */
   getRecentLogs(lines = 30) {
-    return this.#buffer.split("\n").slice(-lines).join("\n");
+    return this.#buffer
+      .split("\n")
+      .filter((l) => l.trim() !== "")
+      .slice(-lines)
+      .join("\n");
   }
 }
